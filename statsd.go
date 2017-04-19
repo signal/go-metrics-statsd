@@ -67,7 +67,7 @@ func statsd(c *StatsDConfig) error {
 	c.Registry.Each(func(name string, metric interface{}) {
 		switch m := metric.(type) {
 		case metrics.Counter:
-			fmt.Fprintf(w, "%s--%s.count:%d|c\n", c.Prefix, name, m.Count())
+			fmt.Fprintf(w, "%s--%s.count:%d|g\n", c.Prefix, name, m.Count())
 		case metrics.Gauge:
 			fmt.Fprintf(w, "%s--%s.value:%d|g\n", c.Prefix, name, m.Value())
 		case metrics.GaugeFloat64:
@@ -75,7 +75,7 @@ func statsd(c *StatsDConfig) error {
 		case metrics.Histogram:
 			h := m.Snapshot()
 			ps := h.Percentiles(c.Percentiles)
-			fmt.Fprintf(w, "%s--%s.count:%d|c\n", c.Prefix, name, h.Count())
+			fmt.Fprintf(w, "%s--%s.count:%d|g\n", c.Prefix, name, h.Count())
 			fmt.Fprintf(w, "%s--%s.min:%d|g\n", c.Prefix, name, h.Min())
 			fmt.Fprintf(w, "%s--%s.max:%d|g\n", c.Prefix, name, h.Max())
 			fmt.Fprintf(w, "%s--%s.mean:%.2f|g\n", c.Prefix, name, h.Mean())
@@ -86,7 +86,7 @@ func statsd(c *StatsDConfig) error {
 			}
 		case metrics.Meter:
 			ss := m.Snapshot()
-			fmt.Fprintf(w, "%s--%s.count:%d|c\n", c.Prefix, name, ss.Count())
+			fmt.Fprintf(w, "%s--%s.count:%d|g\n", c.Prefix, name, ss.Count())
 			fmt.Fprintf(w, "%s--%s.one-minute:%.2f|g\n", c.Prefix, name, ss.Rate1())
 			fmt.Fprintf(w, "%s--%s.five-minute:%.2f|g\n", c.Prefix, name, ss.Rate5())
 			fmt.Fprintf(w, "%s--%s.fifteen-minute:%.2f|g\n", c.Prefix, name, ss.Rate15())
@@ -94,7 +94,7 @@ func statsd(c *StatsDConfig) error {
 		case metrics.Timer:
 			t := m.Snapshot()
 			ps := t.Percentiles(c.Percentiles)
-			fmt.Fprintf(w, "%s--%s.count:%d|c\n", c.Prefix, name, t.Count())
+			fmt.Fprintf(w, "%s--%s.count:%d|g\n", c.Prefix, name, t.Count())
 			fmt.Fprintf(w, "%s--%s.min:%d|g\n", c.Prefix, name, t.Min()/int64(du))
 			fmt.Fprintf(w, "%s--%s.max:%d|g\n", c.Prefix, name, t.Max()/int64(du))
 			fmt.Fprintf(w, "%s--%s.mean:%.2f|g\n", c.Prefix, name, t.Mean()/du)
