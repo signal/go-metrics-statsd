@@ -131,7 +131,7 @@ func TestWrites(t *testing.T) {
 
 	gotLines := srv.Lines()
 	wantLines := []string{
-		"foobar--bar.count:20|c",
+		"foobar--bar.count:20|g",
 		"foobar--bar.fifteen-minute:4.00|g",
 		"foobar--bar.five-minute:4.00|g",
 		"foobar--bar.mean:4.00|g",
@@ -140,7 +140,7 @@ func TestWrites(t *testing.T) {
 		"foobar--baz.75-percentile:4500.00|g",
 		"foobar--baz.99-percentile:5000.00|g",
 		"foobar--baz.999-percentile:5000.00|g",
-		"foobar--baz.count:5|c",
+		"foobar--baz.count:5|g",
 		"foobar--baz.fifteen-minute:0.00|g",
 		"foobar--baz.five-minute:0.00|g",
 		"foobar--baz.max:5000|g",
@@ -149,7 +149,7 @@ func TestWrites(t *testing.T) {
 		"foobar--baz.min:1000|g",
 		"foobar--baz.one-minute:0.00|g",
 		"foobar--baz.std-dev:1414.21|g",
-		"foobar--foo.count:2|c",
+		"foobar--foo.count:2|g",
 		"",
 	}
 
