@@ -67,46 +67,46 @@ func statsd(c *StatsDConfig) error {
 	c.Registry.Each(func(name string, metric interface{}) {
 		switch m := metric.(type) {
 		case metrics.Counter:
-			fmt.Fprintf(w, "%s--%s.count:%d|g\n", c.Prefix, name, m.Count())
+			fmt.Fprintf(w, "%s%s.count:%d|g\n", c.Prefix, name, m.Count())
 		case metrics.Gauge:
-			fmt.Fprintf(w, "%s--%s.value:%d|g\n", c.Prefix, name, m.Value())
+			fmt.Fprintf(w, "%s%s.value:%d|g\n", c.Prefix, name, m.Value())
 		case metrics.GaugeFloat64:
-			fmt.Fprintf(w, "%s--%s.value:%f|g\n", c.Prefix, name, m.Value())
+			fmt.Fprintf(w, "%s%s.value:%f|g\n", c.Prefix, name, m.Value())
 		case metrics.Histogram:
 			h := m.Snapshot()
 			ps := h.Percentiles(c.Percentiles)
-			fmt.Fprintf(w, "%s--%s.count:%d|g\n", c.Prefix, name, h.Count())
-			fmt.Fprintf(w, "%s--%s.min:%d|g\n", c.Prefix, name, h.Min())
-			fmt.Fprintf(w, "%s--%s.max:%d|g\n", c.Prefix, name, h.Max())
-			fmt.Fprintf(w, "%s--%s.mean:%.2f|g\n", c.Prefix, name, h.Mean())
-			fmt.Fprintf(w, "%s--%s.std-dev:%.2f|g\n", c.Prefix, name, h.StdDev())
+			fmt.Fprintf(w, "%s%s.count:%d|g\n", c.Prefix, name, h.Count())
+			fmt.Fprintf(w, "%s%s.min:%d|g\n", c.Prefix, name, h.Min())
+			fmt.Fprintf(w, "%s%s.max:%d|g\n", c.Prefix, name, h.Max())
+			fmt.Fprintf(w, "%s%s.mean:%.2f|g\n", c.Prefix, name, h.Mean())
+			fmt.Fprintf(w, "%s%s.std-dev:%.2f|g\n", c.Prefix, name, h.StdDev())
 			for psIdx, psKey := range c.Percentiles {
 				key := strings.Replace(strconv.FormatFloat(psKey*100.0, 'f', -1, 64), ".", "", 1)
-				fmt.Fprintf(w, "%s--%s.%s-percentile:%.2f|g\n", c.Prefix, name, key, ps[psIdx])
+				fmt.Fprintf(w, "%s%s.%s-percentile:%.2f|g\n", c.Prefix, name, key, ps[psIdx])
 			}
 		case metrics.Meter:
 			ss := m.Snapshot()
-			fmt.Fprintf(w, "%s--%s.count:%d|g\n", c.Prefix, name, ss.Count())
-			fmt.Fprintf(w, "%s--%s.one-minute:%.2f|g\n", c.Prefix, name, ss.Rate1())
-			fmt.Fprintf(w, "%s--%s.five-minute:%.2f|g\n", c.Prefix, name, ss.Rate5())
-			fmt.Fprintf(w, "%s--%s.fifteen-minute:%.2f|g\n", c.Prefix, name, ss.Rate15())
-			fmt.Fprintf(w, "%s--%s.mean:%.2f|g\n", c.Prefix, name, ss.RateMean())
+			fmt.Fprintf(w, "%s%s.count:%d|g\n", c.Prefix, name, ss.Count())
+			fmt.Fprintf(w, "%s%s.one-minute:%.2f|g\n", c.Prefix, name, ss.Rate1())
+			fmt.Fprintf(w, "%s%s.five-minute:%.2f|g\n", c.Prefix, name, ss.Rate5())
+			fmt.Fprintf(w, "%s%s.fifteen-minute:%.2f|g\n", c.Prefix, name, ss.Rate15())
+			fmt.Fprintf(w, "%s%s.mean:%.2f|g\n", c.Prefix, name, ss.RateMean())
 		case metrics.Timer:
 			t := m.Snapshot()
 			ps := t.Percentiles(c.Percentiles)
-			fmt.Fprintf(w, "%s--%s.count:%d|g\n", c.Prefix, name, t.Count())
-			fmt.Fprintf(w, "%s--%s.min:%d|g\n", c.Prefix, name, t.Min()/int64(du))
-			fmt.Fprintf(w, "%s--%s.max:%d|g\n", c.Prefix, name, t.Max()/int64(du))
-			fmt.Fprintf(w, "%s--%s.mean:%.2f|g\n", c.Prefix, name, t.Mean()/du)
-			fmt.Fprintf(w, "%s--%s.std-dev:%.2f|g\n", c.Prefix, name, t.StdDev()/du)
+			fmt.Fprintf(w, "%s%s.count:%d|g\n", c.Prefix, name, t.Count())
+			fmt.Fprintf(w, "%s%s.min:%d|g\n", c.Prefix, name, t.Min()/int64(du))
+			fmt.Fprintf(w, "%s%s.max:%d|g\n", c.Prefix, name, t.Max()/int64(du))
+			fmt.Fprintf(w, "%s%s.mean:%.2f|g\n", c.Prefix, name, t.Mean()/du)
+			fmt.Fprintf(w, "%s%s.std-dev:%.2f|g\n", c.Prefix, name, t.StdDev()/du)
 			for psIdx, psKey := range c.Percentiles {
 				key := strings.Replace(strconv.FormatFloat(psKey*100.0, 'f', -1, 64), ".", "", 1)
-				fmt.Fprintf(w, "%s--%s.%s-percentile:%.2f|g\n", c.Prefix, name, key, ps[psIdx]/du)
+				fmt.Fprintf(w, "%s%s.%s-percentile:%.2f|g\n", c.Prefix, name, key, ps[psIdx]/du)
 			}
-			fmt.Fprintf(w, "%s--%s.one-minute:%.2f|g\n", c.Prefix, name, t.Rate1())
-			fmt.Fprintf(w, "%s--%s.five-minute:%.2f|g\n", c.Prefix, name, t.Rate5())
-			fmt.Fprintf(w, "%s--%s.fifteen-minute:%.2f|g\n", c.Prefix, name, t.Rate15())
-			fmt.Fprintf(w, "%s--%s.mean-rate:%.2f|g\n", c.Prefix, name, t.RateMean())
+			fmt.Fprintf(w, "%s%s.one-minute:%.2f|g\n", c.Prefix, name, t.Rate1())
+			fmt.Fprintf(w, "%s%s.five-minute:%.2f|g\n", c.Prefix, name, t.Rate5())
+			fmt.Fprintf(w, "%s%s.fifteen-minute:%.2f|g\n", c.Prefix, name, t.Rate15())
+			fmt.Fprintf(w, "%s%s.mean-rate:%.2f|g\n", c.Prefix, name, t.RateMean())
 		default:
 			log.Println("[WARN] No Metric", c.Prefix, name, reflect.TypeOf(m))
 		}
