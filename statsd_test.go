@@ -1,8 +1,11 @@
 package statsd
 
 import (
-	"bufio"
+	"bytes"
+	"fmt"
+	"math"
 	"net"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -12,17 +15,13 @@ import (
 	"github.com/rcrowley/go-metrics"
 )
 
-func floatEquals(a, b float64) bool {
-	return (a-b) < 0.000001 && (b-a) < 0.000001
-}
-
 func ExampleStatsD() {
-	addr, _ := net.ResolveTCPAddr("net", ":2003")
+	addr, _ := net.ResolveUDPAddr("net", ":2003")
 	go StatsD(metrics.DefaultRegistry, 1*time.Second, "some.prefix", addr)
 }
 
 func ExampleStatsDWithConfig() {
-	addr, _ := net.ResolveTCPAddr("net", ":2003")
+	addr, _ := net.ResolveUDPAddr("net", ":2003")
 	go StatsDWithConfig(StatsDConfig{
 		Addr:          addr,
 		Registry:      metrics.DefaultRegistry,
@@ -32,59 +31,80 @@ func ExampleStatsDWithConfig() {
 	})
 }
 
-func NewTestServer(t *testing.T, prefix string) (map[string]float64, net.Listener, metrics.Registry, StatsDConfig, *sync.WaitGroup) {
-	res := make(map[string]float64)
+type server struct {
+	addr *net.UDPAddr
+	conn net.Conn
+	mu   sync.RWMutex
+	b    bytes.Buffer
+}
 
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
+func (s *server) Close() error {
+	if s.conn == nil {
+		return nil
+	}
+	return s.conn.Close()
+}
+
+func (s *server) Bytes() []byte {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.b.Bytes()
+}
+
+func (s *server) Lines() []string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return strings.Split(string(s.b.Bytes()), "\n")
+}
+
+// testServer spawns a new UDP test server on 127.0.0.1:12345 and
+// collects all data into a buffer
+func testServer() (s *server, err error) {
+	s = &server{}
+	s.addr = &net.UDPAddr{IP: net.ParseIP("127.0.0.1"), Port: 12345}
+	s.conn, err = net.ListenUDP("udp", s.addr)
 	if err != nil {
-		t.Fatal("could not start dummy server:", err)
+		return nil, err
 	}
 
-	var wg sync.WaitGroup
 	go func() {
+		defer s.conn.Close()
+		buf := make([]byte, 1024)
 		for {
-			conn, err := ln.Accept()
+			n, err := s.conn.Read(buf)
 			if err != nil {
-				t.Fatal("dummy server error:", err)
+				fmt.Println("server: read: ", err)
+				return
 			}
-			r := bufio.NewReader(conn)
-			line, err := r.ReadString('\n')
-			for err == nil {
-				parts := strings.Split(line, ":")
-				i, _ := strconv.ParseFloat(strings.Split(parts[1], "|")[0], 0)
-				if testing.Verbose() {
-					t.Log("recv", parts[0], i)
-				}
-				res[parts[0]] = res[parts[0]] + i
-				line, err = r.ReadString('\n')
+
+			s.mu.Lock()
+			_, err = s.b.Write(buf[:n])
+			s.mu.Unlock()
+
+			if err != nil {
+				fmt.Println("server: write: ", err)
+				return
 			}
-			wg.Done()
-			conn.Close()
 		}
 	}()
-
-	r := metrics.NewRegistry()
-
-	c := StatsDConfig{
-		Addr:          ln.Addr().(*net.TCPAddr),
-		Registry:      r,
-		FlushInterval: 10 * time.Millisecond,
-		DurationUnit:  time.Millisecond,
-		Percentiles:   []float64{0.5, 0.75, 0.99, 0.999},
-		Prefix:        prefix,
-	}
-
-	return res, ln, r, c, &wg
+	return s, nil
 }
 
 func TestWrites(t *testing.T) {
-	res, l, r, c, wg := NewTestServer(t, "foobar")
-	defer l.Close()
+	// start a test server
+	srv, err := testServer()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer srv.Close()
+
+	// generate some metrics
+	r := metrics.NewRegistry()
 
 	metrics.GetOrRegisterCounter("foo", r).Inc(2)
 
 	// TODO: Use a mock meter rather than wasting 10s to get a QPS.
-	for i := 0; i < 10*4; i++ {
+	for i := 0; i < 20; i++ {
 		metrics.GetOrRegisterMeter("bar", r).Mark(1)
 		time.Sleep(250 * time.Millisecond)
 	}
@@ -95,31 +115,85 @@ func TestWrites(t *testing.T) {
 	metrics.GetOrRegisterTimer("baz", r).Update(time.Second * 2)
 	metrics.GetOrRegisterTimer("baz", r).Update(time.Second * 1)
 
-	wg.Add(1)
+	// report the metrics to the test server
+	c := StatsDConfig{
+		Addr:          srv.addr,
+		Registry:      r,
+		FlushInterval: 10 * time.Millisecond,
+		DurationUnit:  time.Millisecond,
+		Percentiles:   []float64{0.5, 0.75, 0.99, 0.999},
+		Prefix:        "foobar",
+	}
 	statsd(&c)
-	wg.Wait()
 
-	if expected, found := 2.0, res["foobar--foo.count"]; !floatEquals(found, expected) {
-		t.Fatal("bad value:", expected, found)
+	// wait for data to arrive
+	time.Sleep(250 * time.Millisecond)
+
+	gotLines := srv.Lines()
+	wantLines := []string{
+		"foobar--bar.count:20|c",
+		"foobar--bar.fifteen-minute:4.00|g",
+		"foobar--bar.five-minute:4.00|g",
+		"foobar--bar.mean:4.00|g",
+		"foobar--bar.one-minute:4.00|g",
+		"foobar--baz.50-percentile:3000.00|g",
+		"foobar--baz.75-percentile:4500.00|g",
+		"foobar--baz.99-percentile:5000.00|g",
+		"foobar--baz.999-percentile:5000.00|g",
+		"foobar--baz.count:5|c",
+		"foobar--baz.fifteen-minute:0.00|g",
+		"foobar--baz.five-minute:0.00|g",
+		"foobar--baz.max:5000|g",
+		"foobar--baz.mean-rate:138454.30|g",
+		"foobar--baz.mean:3000.00|g",
+		"foobar--baz.min:1000|g",
+		"foobar--baz.one-minute:0.00|g",
+		"foobar--baz.std-dev:1414.21|g",
+		"foobar--foo.count:2|c",
+		"",
 	}
 
-	if expected, found := 40.0, res["foobar--bar.count"]; !floatEquals(found, expected) {
-		t.Fatal("bad value:", expected, found)
+	// check number of lines
+	if got, want := len(gotLines), len(wantLines); got != want {
+		t.Fatalf("got %d lines want %d", got, want)
 	}
 
-	if expected, found := 4.0, res["foobar--bar.one-minute"]; !floatEquals(found, expected) {
-		t.Fatal("bad value:", expected, found)
+	// check that last line is blank
+	if got, want := gotLines[len(gotLines)-1], ""; got != want {
+		t.Fatalf("got %q as last line want %q", got, want)
 	}
 
-	if expected, found := 5.0, res["foobar--baz.count"]; !floatEquals(found, expected) {
-		t.Fatal("bad value:", expected, found)
+	// compare results
+	parse := func(s string) (key string, val float64, typ string, err error) {
+		a, b := strings.IndexRune(s, ':'), strings.IndexRune(s, '|')
+		key = s[:a]
+		typ = s[b+1:]
+		val, err = strconv.ParseFloat(s[a+1:b], 64)
+		return
 	}
 
-	if expected, found := 5000.0, res["foobar--baz.99-percentile"]; !floatEquals(found, expected) {
-		t.Fatal("bad value:", expected, found)
+	cmp := func(a, b string, delta float64) bool {
+		akey, aval, atyp, aerr := parse(a)
+		bkey, bval, btyp, berr := parse(b)
+		return aerr == nil && berr == nil && akey == bkey && atyp == btyp && math.Abs(aval-bval) < delta
 	}
 
-	if expected, found := 3000.0, res["foobar--baz.50-percentile"]; !floatEquals(found, expected) {
-		t.Fatal("bad value:", expected, found)
+	sort.Strings(gotLines)
+	sort.Strings(wantLines)
+	for i := range gotLines {
+		got, want := gotLines[i], wantLines[i]
+		if got == "" {
+			continue
+		}
+
+		// TODO: mean-rate is a bit strange
+		delta := 0.00001
+		if strings.Contains(got, ".mean-rate:") {
+			delta = math.MaxFloat64
+		}
+
+		if !cmp(got, want, delta) {
+			t.Errorf("got line %q want %q", got, want)
+		}
 	}
 }
